@@ -85,6 +85,10 @@ class SequenceBoard:
         if (x, y) not in self.marked_positions and self.board[x][y] != self.FREE_MARKER:
             self.marked_positions[(x, y)] = player
 
+    def unmark_position(self, x, y, player):
+        if (x, y) in self.marked_positions and self.board[x][y] != self.FREE_MARKER:
+            _ = self.marked_positions.pop((x,y))
+
     def get_card_positions(self, value_suit_tuple):
         positions = []
         for i, row in enumerate(self.board):
@@ -107,6 +111,7 @@ class SequenceBoard:
                     if self.marked_positions[(i, j)] == "PLAYER1":
                         card_str = Colors.PLAYER1 + card_str + Colors.RESET
                     else:
+
                         card_str = Colors.PLAYER2 + card_str + Colors.RESET
                 row_display.append(card_str)
             print(' | '.join(row_display))
@@ -124,7 +129,6 @@ class SequenceGame:
         }
         
     def switch_player(self):
-        """Switches the current player."""
         if self.current_player == "PLAYER1":
             self.current_player = "PLAYER2"
         else:
@@ -134,7 +138,8 @@ class SequenceGame:
     def play_card(self):
         while True:
             try:
-                raw_user_input = input("Enter coords to mark (e.g. c3) or cardnumber (1-8): ")
+                num_cards = len(self.hands[self.current_player])
+                raw_user_input = input(f"Enter coords to mark (e.g. c3) or cardnumber (1-{num_cards}): ")
                 user_input = raw_user_input.strip().lower()
                 
                 if user_input == "exit":
@@ -143,12 +148,11 @@ class SequenceGame:
                 if (len(user_input) == 1 and user_input.isdigit()):
                     
                     card_number = int(user_input)
-                    if (1 <= card_number <= 8):
+                    if (1 <= card_number <= num_cards):
                         selected_card = self.hands[self.current_player][card_number-1]
 
                         if selected_card[0] == 'J':
-                            print("j-johhny-jack")
-                            # TODO
+                            break
                         
                         # find postions of card on board
                         candidate_coords = self.board.get_card_positions(selected_card)
@@ -183,24 +187,74 @@ class SequenceGame:
                     
                     x, y = alpha_to_coord(user_input)
                     
-                    if ((0 <= x < 10 and 0 <= y < 10)
+                    if not((0 <= x < 10 and 0 <= y < 10)
                         and (x, y) not in self.board.marked_positions
                         and self.board.board[x][y] != self.board.FREE_MARKER
                         ):
-                        # TODO - check if you have card
-                        # TODO - refactor
-                        break   # valid choice
-                    else:
                         print("Invalid coordinates. Please try again.")
+                        continue
+                        
+                    selected_card = self.board.board[x][y]
+                    
+                    if selected_card not in self.hands[self.current_player]:
+                        print(f"You chose tile {user_input} with {selected_card} but don't have it in your hand.")
+                        continue
+                    
+                    # if you're here it's a valid choice, break loop and finish function
+                    break   
+                    
                 else:
                     print("Invalid input; neither coords, nor cardnumber. Please try again.")
         
             except ValueError:
-                print("Invalid format. Please use comma-separated values (e.g., 1,2).")
+                print("Invalid input formart.")
 
-        # handle jacks
-        # one-eyed: spades,hearts | two-eyed: clubs, hearts
+        # jack played: handle one-eye vs two-eye behavior and user selection of spot
+        if selected_card[0] == 'J':
+        
+            one_eyed, two_eyed = ['♠', '♥'], ['♦', '♣']
+            is_one_eyed = True if selected_card[1] in one_eyed else False
+
+            j_msg =  f"You are playing a {'one' if is_one_eyed else 'two'}-eyed jack\n"
+            if is_one_eyed:
+                j_msg += f"Remove a tile by entering the coords (e.g. c3) >"
+            else:
+                j_msg += f"Add a tile (to unmarked sq) by entering the coords (e.g. c3) >"
+
+            while True:
+
+                ret = input(j_msg)        
+                ret = ret.strip().lower()
+
+                if not((len(ret) == 2) 
+                      and ret[0].isalpha() and ret[1].isdigit()
+                    ):
+                    print(f"coord {ret} not recognized, try again")
+                    continue
+
+                x, y = alpha_to_coord(ret)
+
+                # validation
+                if not((0 <= x < 10 and 0 <= y < 10)
+                    and self.board.board[x][y] != self.board.FREE_MARKER
+                    ):
+                    print("Invalid spot chosen, try again.")
+                    continue
+                    
+                if is_one_eyed:
+                    if (x, y) not in self.board.marked_positions:
+                        print("Chose a marked spot to remove with one eyed jack")
+                        continue
+                    self.board.unmark_position(x, y, self.current_player)
+                    x, y = None, None   # will not mark
+                else:
+                    if (x, y) in self.board.marked_positions:
+                        print("Chose an unmarked spot to remove with one eyed jack")
+                        continue
+                
+                break
             
+        # finish up routine
         self.hands[self.current_player].remove(selected_card)
 
         return x, y
@@ -217,7 +271,8 @@ class SequenceGame:
         
         x, y = self.play_card()
 
-        self.board.mark_position(x, y, self.current_player)
+        if x is not None and y is not None:
+            self.board.mark_position(x, y, self.current_player)
         print('')
         self.board.display()
         self.switch_player()
