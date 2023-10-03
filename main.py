@@ -1,5 +1,9 @@
 import random
 
+# For testing purposes, set to True so that PLAYER2 draws a 
+# pre-defined set of cards which will ensure 2 sequences.
+B_LUCKY = True
+
 def leftpad(s):
     if len(s) == 1: return f" {s}"
     else: return s
@@ -29,9 +33,21 @@ class CardDeck:
         self.cards = [(value, suit) for _ in range(2) 
                       for suit in self.suits for value in self.values]
         random.shuffle(self.cards)
+        self.counter = 0
+        # self.stacked =  ['2♠', '3♠', '4♠', '5♠', '6♠', '3♦', '4♦', '5♦', '2♦', 'A♠']
+        self.stacked =  ['2♠', '3♠', '4♠', '5♠', '6♠']
+        self.stacked =  [(e[0], e[1]) for e in self.stacked]
     
-    def draw_card(self):
-        return self.cards.pop()
+    def draw_card(self, stub_lucky=B_LUCKY):
+        if not(stub_lucky):
+            return self.cards.pop()
+        else:
+            self.counter += 1
+            if (self.counter % 2) == 0:
+                print("deal from the bottom...")
+                return self.stacked.pop()
+            else:
+                return self.cards.pop()
 
 
 class SequenceBoard:
@@ -96,6 +112,41 @@ class SequenceBoard:
                 if card == value_suit_tuple:
                     positions.append((i, j))
         return positions
+    
+    
+    def check_direction(self, x, y, dx, dy, player):
+        """Checks a specific direction for 5 consecutive tiles of the player."""
+        count = 0
+        overlapping = False
+        
+        for _ in range(6):  # Check for 6 tiles to identify overlapping sequences
+            if ((0 <= x < 10 and 0 <= y < 10) 
+                and ( 
+                    (self.marked_positions.get((x, y)) == player)
+                    or ((x,y) in self.free_spaces_xy)
+                )
+                ):
+                count += 1
+                if count == 6:  # If we have 6 tiles in sequence, it's overlapping
+                    overlapping = True
+            else:
+                break
+            x, y = x + dx, y + dy
+            
+        return count >= 5 and not overlapping
+
+
+    def count_sequences(self, player):
+        """Counts the number of 5-mer sequences for a player."""
+        sequence_count = 0
+        for x in range(10):
+            for y in range(10):
+                # Check rightwards, downwards, right-down diagonal, and left-down diagonal
+                if any([self.check_direction(x, y, dx, dy, player) for dx, dy in [(1, 0), (0, 1), (1, 1), (-1, 1)]]):
+                    sequence_count += 1
+        
+        return sequence_count
+
 
     def display(self):
 
@@ -124,9 +175,11 @@ class SequenceGame:
         self.current_player = "PLAYER1"
         self.card_deck = CardDeck()
         self.hands = {
-            "PLAYER1": [self.card_deck.draw_card() for _ in range(7)],
-            "PLAYER2": [self.card_deck.draw_card() for _ in range(7)]
+            "PLAYER1": [self.card_deck.draw_card(stub_lucky=False) for _ in range(7)],
+            "PLAYER2": [self.card_deck.draw_card(stub_lucky=False) for _ in range(7)]
         }
+        self.winning_sequences = 2
+        self.winner = None
         
     def switch_player(self):
         if self.current_player == "PLAYER1":
@@ -141,9 +194,6 @@ class SequenceGame:
                 num_cards = len(self.hands[self.current_player])
                 raw_user_input = input(f"Enter coords to mark (e.g. c3) or cardnumber (1-{num_cards}): ")
                 user_input = raw_user_input.strip().lower()
-                
-                if user_input == "exit":
-                    return False
                 
                 if (len(user_input) == 1 and user_input.isdigit()):
                     
@@ -246,7 +296,7 @@ class SequenceGame:
                         print("Chose a marked spot to remove with one eyed jack")
                         continue
                     self.board.unmark_position(x, y, self.current_player)
-                    x, y = None, None   # will not mark
+                    x, y = None, None   # setting to None, will not mark coords on board
                 else:
                     if (x, y) in self.board.marked_positions:
                         print("Chose an unmarked spot to remove with one eyed jack")
@@ -273,10 +323,17 @@ class SequenceGame:
 
         if x is not None and y is not None:
             self.board.mark_position(x, y, self.current_player)
+        
         print('')
         self.board.display()
+        
+        num_sequences = self.board.count_sequences(self.current_player)
+        print(f"{self.current_player}: {num_sequences} sequences\n")
+        
+        if num_sequences >= self.winning_sequences:
+            self.winner = self.current_player
+        
         self.switch_player()
-        return True
     
     def display_hand(self, hand):
         row_display = []
@@ -296,9 +353,11 @@ class SequenceGame:
         print("Welcome to Sequence!\n")
         self.board.display()
         while True:
-            b_continue = self.play_turn()
-            if not(b_continue):
-                print("game exited by user, goodbye")
+            
+            self.play_turn()
+            
+            if self.winner is not None:
+                print(f"{self.winner} wins!")
                 break
 
 
